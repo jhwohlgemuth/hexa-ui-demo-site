@@ -25,7 +25,7 @@ module.exports = {
     },
     csp: {
         'default-src': '\'self\'',
-        'script-src':  '\'self\' cdnjs.cloudflare.com \'unsafe-eval\'' ,
+        'script-src':  '\'self\' cdnjs.cloudflare.com',
         'font-src': '\'self\' fonts.gstatic.com data:'
     }
 };
