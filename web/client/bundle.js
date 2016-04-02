@@ -193,16 +193,8 @@ module.exports = App;
             button.height = H;
             button.width = W;
             button.bar = bar;
-            button.enableHoverAnimation = function () {
-                button.hoverAnimationDisabled = false;
-                button.hover(onHoverIn, onHoverOut);
-            };
-            button.disableHoverAnimation = function () {
-                button.hoverAnimationDisabled = true;
-                button.unhover(onHoverIn, onHoverOut);
-            };
-            function onHoverIn() {
-                if (!this.hoverAnimationDisabled && subTitle.attr('text').length > 0) {
+            var onHoverIn = function () {
+                if (!button.hoverAnimationDisabled && subTitle.attr('text').length > 0) {
                     title.animate({
                         fontSize: FONT_SIZE * 0.8,
                         y: y0 + cY - FONT_SIZE / 4
@@ -212,8 +204,8 @@ module.exports = App;
                         x: x0 + cX
                     }, 100);
                 }
-            }
-            function onHoverOut() {
+            };
+            var onHoverOut = function () {
                 title.animate({
                     fontSize: FONT_SIZE,
                     y: y0 + cY
@@ -222,7 +214,19 @@ module.exports = App;
                     opacity: 0,
                     x: x0 + BETA
                 }, 100);
-            }
+            };
+            button.enableHoverAnimation = function () {
+                button.hoverAnimationDisabled = false;
+                button.hover(onHoverIn, onHoverOut);
+            };
+            button.disableHoverAnimation = function () {
+                button.hoverAnimationDisabled = true;
+                button.unhover(onHoverIn, onHoverOut);
+            };
+            button.reset = function () {
+                onHoverOut();
+                return button;
+            };
             button.enableHoverAnimation();
             return button;
         };
@@ -355,16 +359,55 @@ var Marionette = require('backbone.marionette');
 var Snap = require('snapsvg');
 var JST = require('./../templates');
 var Example = require('./../models/example');
-function NOOP() {
-    console.log('NOOP!!!');
-}
-function preventDefault(e) {
-    e.preventDefault();
-}
 Snap.plugin(function (Snap, Element, Paper) {
+    function now() {
+        return new Date().getTime();
+    }
+    function NOOP() {
+        console.log('NOOP!!!');
+    }
+    function preventDefault(e) {
+        e.preventDefault();
+    }
+    function debounce(func, wait, immediate) {
+        var timeout;
+        var args;
+        var context;
+        var timestamp;
+        var result;
+        var later = function () {
+            var last = now() - timestamp;
+            if (last < wait && last >= 0) {
+                timeout = setTimeout(later, wait - last);
+            } else {
+                timeout = null;
+                if (!immediate) {
+                    result = func.apply(context, args);
+                    if (!timeout) {
+                        context = args = null;
+                    }
+                }
+            }
+        };
+        return function () {
+            context = this;
+            args = arguments;
+            timestamp = now();
+            var callNow = immediate && !timeout;
+            if (!timeout) {
+                timeout = setTimeout(later, wait);
+            }
+            if (callNow) {
+                result = func.apply(context, args);
+                context = args = null;
+            }
+            return result;
+        };
+    }
     Paper.prototype.hexamenu = function (items, options) {
         var paper = this;
         var buttons = [];
+        var DURATION = options.duration ? options.duration : 100;
         var BORDER = 1;
         var SIDE = options.sideLength;
         var width = options.width;
@@ -383,21 +426,23 @@ Snap.plugin(function (Snap, Element, Paper) {
         var revealChild = Snap.matrix();
         var hide = Snap.matrix();
         var shift = Snap.matrix();
-        var shrink = Snap.matrix();
         reveal.translate(menuWidth, 0);
         revealChild.translate(0 - menuWidth, 0);
         hide.translate(0 - menuItemWidth, 0);
         shift.translate(menuItemWidth + gutter + BORDER, 0);
-        shrink.scale(0, 0);
+        var REVEAL = { transform: reveal };
+        var SHIFT = { transform: shift };
+        var HIDE = { transform: hide };
         var onClick = function () {
             var thisButton = buttons[this.index];
-            var nextButton = buttons[thisButton.index + 1];
+            thisButton.reset();
             if (thisButton.isActive) {
                 resetMenu.bind(paper)();
             } else {
                 thisButton.isActive = true;
                 thisButton.addClass('active');
                 thisButton.children = [];
+                thisButton.disableHoverAnimation();
                 var index = thisButton.index;
                 var x0 = menuWidth - BETA;
                 var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
@@ -421,13 +466,13 @@ Snap.plugin(function (Snap, Element, Paper) {
                 thisButton.children.forEach(function (child, index) {
                     setTimeout(function () {
                         var options = {
+                            menu: paper,
                             parent: thisButton,
                             target: child
                         };
                         var eventName = 'click:' + thisButton.index + ':' + index;
                         child.node.onclick = function () {
                             trigger(eventName, options);
-                            trigger('the boot');
                         };
                         child.node.oncontextmenu = preventDefault;
                         child.attr('opacity', 1);
@@ -436,9 +481,9 @@ Snap.plugin(function (Snap, Element, Paper) {
                 });
                 buttons.filter(function (e, i) {
                     return i !== thisButton.index;
-                }).forEach(function (button, index) {
+                }).forEach(function (button) {
                     button.node.onclick = NOOP;
-                    button.animate({ transform: shift }, 50).attr('opacity', 0.9).addClass('disabled').disableHoverAnimation();
+                    button.animate(SHIFT, 50).attr('opacity', 0.9).addClass('disabled').disableHoverAnimation();
                 });
             }
         };
@@ -460,10 +505,12 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.node.onclick = onClick.bind(button);
                 button.node.onblur = NOOP;
                 button.node.oncontextmenu = preventDefault;
+                button.touchstart(function () {
+                    console.log('touch start');
+                });
             });
         }
         function resetMenu() {
-            var menu = this;
             buttons.forEach(function (button) {
                 if (button.children.length > 0) {
                     button.children.forEach(function (child) {
@@ -473,29 +520,43 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.children = [];
                 button.isActive = false;
                 button.node.onclick = onClick.bind(button);
-                button.removeClass('active').removeClass('disabled').animate({ transform: paper.visible ? reveal : hide }, 50).attr({ opacity: 1 }).enableHoverAnimation();
+                button.removeClass('active').removeClass('disabled').animate({ transform: paper.visible ? reveal : hide }, 50).attr({ opacity: 1 }).reset().enableHoverAnimation();
             });
         }
         function showMenu(duration) {
-            var DURATION = duration ? duration : 100;
-            buttons.forEach(function (button, index) {
-                setTimeout(function () {
-                    button.animate({ transform: reveal }, DURATION, mina.easein);
-                }, DURATION / 2 * index);
-            });
-            paper.visible = true;
+            if (!paper.visible) {
+                buttons.forEach(function (button, index) {
+                    setTimeout(function () {
+                        button.animate(REVEAL, duration, mina.easein, function () {
+                            if (index === items.length - 1) {
+                                paper.visible = true;
+                                trigger('show', { menu: paper });
+                            }
+                        });
+                    }, duration / 2 * index);
+                });
+            }
         }
         function hideMenu(duration) {
-            var DURATION = duration ? duration : 100;
             buttons.slice(0).reverse().forEach(function (button, index) {
-                button.animate({ transform: hide }, DURATION + DURATION / 2 * index, mina.backout);
+                button.animate(HIDE, duration + duration / 2 * index, mina.backout, function () {
+                    if (index === items.length - 1) {
+                        paper.visible = false;
+                        trigger('hide', { menu: paper });
+                    }
+                });
             });
-            paper.visible = false;
         }
         function closeMenu(duration) {
-            var DURATION = duration ? duration : 100;
             resetMenu.bind(paper)();
-            hideMenu.bind(paper)(DURATION);
+            hideMenu.bind(paper)(duration);
+        }
+        function toggleMenu() {
+            if (paper.visible) {
+                closeMenu.bind(paper)(DURATION);
+            } else {
+                showMenu.bind(paper)(DURATION);
+            }
         }
         function trigger(name, options) {
             var el = paper.node;
@@ -519,9 +580,7 @@ Snap.plugin(function (Snap, Element, Paper) {
         setupMenu();
         return {
             buttons: buttons,
-            show: showMenu,
-            hide: hideMenu,
-            close: closeMenu,
+            toggle: debounce(toggleMenu, 2.5 * DURATION, true),
             reset: resetMenu,
             on: on,
             off: off
@@ -573,23 +632,27 @@ var HexagonalView = Marionette.ItemView.extend({
         var h1 = paper.hexagon(30, 529, 85);
         h1.attr({ fill: '#333' });
         h1.click(function () {
-            menu.show(100);
+            menu.toggle();
         });
         var h2 = paper.hexagon(30, 557, 133);
         h2.attr({ fill: '#333' });
         h2.click(function () {
-            menu.close(150);
-        });
-        var h3 = paper.hexagon(30, 586, 181);
-        h3.attr({ fill: '#333' });
-        h3.click(function () {
             menu.reset();
         });
         var clickHandler = function (e) {
-            console.log('THE Boot!');
+            console.log(e.detail.target.title.attr('text'));
+            e.detail.target.title.attr('text', 'BOOT');
+            e.detail.target.subTitle.attr('text', '');
+            e.detail.target.reset();
+            e.detail.parent.disableHoverAnimation();
         };
         menu.on('click:1:2', clickHandler);
-        menu.on('the boot', clickHandler);
+        menu.on('show', function () {
+            console.log('show');
+        });
+        menu.on('hide', function () {
+            console.log('hide');
+        });
     }
 });
 module.exports = HexagonalView;
