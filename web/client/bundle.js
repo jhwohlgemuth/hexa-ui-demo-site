@@ -369,6 +369,9 @@ Snap.plugin(function (Snap, Element, Paper) {
     function preventDefault(e) {
         e.preventDefault();
     }
+    function translateX(value) {
+        return { transform: 'translateX(' + value + ')' };
+    }
     function debounce(func, wait, immediate) {
         var timeout;
         var args;
@@ -476,14 +479,23 @@ Snap.plugin(function (Snap, Element, Paper) {
                         };
                         child.node.oncontextmenu = preventDefault;
                         child.attr('opacity', 1);
-                        child.animate({ transform: revealChild }, 50, mina.easein);
+                        var stop = -1 * menuWidth;
+                        var start = 0;
+                        Snap.animate(start, stop, function (value) {
+                            child.attr(translateX(value));
+                        }, 50, mina.easein);
                     }, 50 * index);
                 });
                 buttons.filter(function (e, i) {
                     return i !== thisButton.index;
                 }).forEach(function (button) {
                     button.node.onclick = NOOP;
-                    button.animate(SHIFT, 50).attr('opacity', 0.9).addClass('disabled').disableHoverAnimation();
+                    var stop = menuItemWidth + gutter + BORDER;
+                    var start = menuWidth;
+                    Snap.animate(start, stop, function (value) {
+                        button.attr(translateX(value));
+                    }, 50);
+                    button.attr('opacity', 0.9).addClass('disabled').disableHoverAnimation();
                 });
             }
         };
@@ -641,12 +653,12 @@ var HexagonalView = Marionette.ItemView.extend({
         });
         var clickHandler = function (e) {
             console.log(e.detail.target.title.attr('text'));
-            e.detail.target.title.attr('text', 'BOOT');
-            e.detail.target.subTitle.attr('text', '');
+            e.detail.target.title.attr('text', 'CHOSEN');
+            e.detail.target.subTitle.attr('text', 'SUB CHOICE 5');
             e.detail.target.reset();
             e.detail.parent.disableHoverAnimation();
         };
-        menu.on('click:1:2', clickHandler);
+        menu.on('click:3:4', clickHandler);
         menu.on('show', function () {
             console.log('show');
         });
