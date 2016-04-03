@@ -425,17 +425,6 @@ Snap.plugin(function (Snap, Element, Paper) {
         function rowHeight(m) {
             return m > 0 ? m * (SIDE + SQRT_2 * gutter) + (m - 1) * ALPHA : -ALPHA;
         }
-        var reveal = Snap.matrix();
-        var revealChild = Snap.matrix();
-        var hide = Snap.matrix();
-        var shift = Snap.matrix();
-        reveal.translate(menuWidth, 0);
-        revealChild.translate(0 - menuWidth, 0);
-        hide.translate(0 - menuItemWidth, 0);
-        shift.translate(menuItemWidth + gutter + BORDER, 0);
-        var REVEAL = { transform: reveal };
-        var SHIFT = { transform: shift };
-        var HIDE = { transform: hide };
         var onClick = function () {
             var thisButton = buttons[this.index];
             thisButton.reset();
@@ -479,9 +468,7 @@ Snap.plugin(function (Snap, Element, Paper) {
                         };
                         child.node.oncontextmenu = preventDefault;
                         child.attr('opacity', 1);
-                        var stop = -1 * menuWidth;
-                        var start = 0;
-                        Snap.animate(start, stop, function (value) {
+                        Snap.animate(0, -menuWidth, function (value) {
                             child.attr(translateX(value));
                         }, 50, mina.easein);
                     }, 50 * index);
@@ -490,8 +477,8 @@ Snap.plugin(function (Snap, Element, Paper) {
                     return i !== thisButton.index;
                 }).forEach(function (button) {
                     button.node.onclick = NOOP;
-                    var stop = menuItemWidth + gutter + BORDER;
                     var start = menuWidth;
+                    var stop = menuItemWidth + gutter + BORDER;
                     Snap.animate(start, stop, function (value) {
                         button.attr(translateX(value));
                     }, 50);
@@ -517,9 +504,6 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.node.onclick = onClick.bind(button);
                 button.node.onblur = NOOP;
                 button.node.oncontextmenu = preventDefault;
-                button.touchstart(function () {
-                    console.log('touch start');
-                });
             });
         }
         function resetMenu() {
@@ -532,8 +516,8 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.children = [];
                 button.isActive = false;
                 button.node.onclick = onClick.bind(button);
-                var stop = paper.visible ? menuWidth : 0;
                 var start = menuWidth;
+                var stop = paper.visible ? menuWidth : 0;
                 Snap.animate(start, stop, function (value) {
                     button.attr(translateX(value));
                 }, 50);
@@ -544,9 +528,7 @@ Snap.plugin(function (Snap, Element, Paper) {
             if (!paper.visible) {
                 buttons.forEach(function (button, index) {
                     setTimeout(function () {
-                        var start = 0;
-                        var stop = menuWidth;
-                        Snap.animate(start, stop, function (value) {
+                        Snap.animate(0, menuWidth, function (value) {
                             button.attr(translateX(value));
                         }, duration, mina.easein, function () {
                             if (index === items.length - 1) {
@@ -560,9 +542,7 @@ Snap.plugin(function (Snap, Element, Paper) {
         }
         function hideMenu(duration) {
             buttons.slice(0).reverse().forEach(function (button, index) {
-                var start = menuWidth;
-                var stop = 0;
-                Snap.animate(start, stop, function (value) {
+                Snap.animate(menuWidth, 0, function (value) {
                     button.attr(translateX(value));
                 }, duration + duration / 2 * index, mina.backout, function () {
                     if (index === items.length - 1) {
