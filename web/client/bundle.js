@@ -517,7 +517,7 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.isActive = false;
                 button.node.onclick = onClick.bind(button);
                 var start = menuWidth;
-                var stop = paper.visible ? menuWidth : 0;
+                var stop = paper.visible ? menuWidth : -3 * menuWidth;
                 Snap.animate(start, stop, function (value) {
                     button.attr(translateX(value));
                 }, 50);
