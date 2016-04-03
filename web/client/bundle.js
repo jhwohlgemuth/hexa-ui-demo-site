@@ -539,7 +539,11 @@ Snap.plugin(function (Snap, Element, Paper) {
             if (!paper.visible) {
                 buttons.forEach(function (button, index) {
                     setTimeout(function () {
-                        button.animate(REVEAL, duration, mina.easein, function () {
+                        var start = 0;
+                        var stop = menuWidth;
+                        Snap.animate(start, stop, function (value) {
+                            button.attr(translateX(value));
+                        }, duration, mina.easein, function () {
                             if (index === items.length - 1) {
                                 paper.visible = true;
                                 trigger('show', { menu: paper });
