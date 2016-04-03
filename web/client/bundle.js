@@ -532,7 +532,12 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.children = [];
                 button.isActive = false;
                 button.node.onclick = onClick.bind(button);
-                button.removeClass('active').removeClass('disabled').animate({ transform: paper.visible ? reveal : hide }, 50).attr({ opacity: 1 }).reset().enableHoverAnimation();
+                var stop = paper.visible ? menuWidth : 0;
+                var start = menuWidth;
+                Snap.animate(start, stop, function (value) {
+                    button.attr(translateX(value));
+                }, 50);
+                button.removeClass('active').removeClass('disabled').attr({ opacity: 1 }).reset().enableHoverAnimation();
             });
         }
         function showMenu(duration) {
