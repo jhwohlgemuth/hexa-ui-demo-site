@@ -555,7 +555,11 @@ Snap.plugin(function (Snap, Element, Paper) {
         }
         function hideMenu(duration) {
             buttons.slice(0).reverse().forEach(function (button, index) {
-                button.animate(HIDE, duration + duration / 2 * index, mina.backout, function () {
+                var start = menuWidth;
+                var stop = 0;
+                Snap.animate(start, stop, function (value) {
+                    button.attr(translateX(value));
+                }, duration + duration / 2 * index, mina.backout, function () {
                     if (index === items.length - 1) {
                         paper.visible = false;
                         trigger('hide', { menu: paper });
