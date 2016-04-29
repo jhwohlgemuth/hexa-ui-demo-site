@@ -84,6 +84,9 @@ module.exports = App;
     'use strict';
     var Snap = require('snapsvg');
     Snap.plugin(function (Snap, Element, Paper) {
+        function isTouch() {
+            return !!('ontouchstart' in window) || window.navigator.msMaxTouchPoints > 0;
+        }
         Paper.prototype.hexagon = function (sideLength, x0, y0) {
             x0 = x0 ? x0 : 0;
             y0 = y0 ? y0 : 0;
@@ -187,6 +190,9 @@ module.exports = App;
             var bar = this.polygon(pts);
             var button = this.group(bar, title, subTitle);
             button.addClass('hexabar menu-item');
+            if (isTouch()) {
+                button.addClass('touch');
+            }
             button.hoverAnimationDisabled = false;
             button.title = title;
             button.subTitle = subTitle;
@@ -409,6 +415,7 @@ Snap.plugin(function (Snap, Element, Paper) {
     }
     Paper.prototype.hexamenu = function (items, options) {
         var paper = this;
+        paper.visible = false;
         var buttons = [];
         var DURATION = options.duration ? options.duration : 100;
         var BORDER = 1;
@@ -425,8 +432,14 @@ Snap.plugin(function (Snap, Element, Paper) {
         function rowHeight(m) {
             return m > 0 ? m * (SIDE + SQRT_2 * gutter) + (m - 1) * ALPHA : -ALPHA;
         }
-        var onClick = function () {
+        var onClick = function (e) {
+            e.preventDefault();
             var thisButton = buttons[this.index];
+            trigger('click:' + thisButton.index, {
+                menu: paper,
+                parent: null,
+                target: thisButton
+            });
             thisButton.reset();
             if (thisButton.isActive) {
                 resetMenu.bind(paper)();
@@ -438,21 +451,14 @@ Snap.plugin(function (Snap, Element, Paper) {
                 var index = thisButton.index;
                 var x0 = menuWidth - BETA;
                 var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
-                [
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                    6
-                ].forEach(function (index) {
+                items[thisButton.index].children.forEach(function (child, index) {
                     thisButton.children.push(paper.hexabar({
-                        title: 'SUB CHOICE ' + index,
-                        subtitle: index % 2 ? 'some random sentence' : '',
+                        title: child.title,
+                        subtitle: child.subtitle,
                         sideLength: SIDE,
                         width: width,
                         x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
-                        y: y0 + rowHeight(index)
+                        y: y0 + rowHeight(index + 1)
                     }).attr('opacity', 0));
                 });
                 thisButton.children.forEach(function (child, index) {
@@ -466,6 +472,9 @@ Snap.plugin(function (Snap, Element, Paper) {
                         child.node.onclick = function () {
                             trigger(eventName, options);
                         };
+                        child.node.ontouchstart = function () {
+                            trigger(eventName, options);
+                        };
                         child.node.oncontextmenu = preventDefault;
                         child.attr('opacity', 1);
                         Snap.animate(0, -menuWidth, function (value) {
@@ -477,6 +486,7 @@ Snap.plugin(function (Snap, Element, Paper) {
                     return i !== thisButton.index;
                 }).forEach(function (button) {
                     button.node.onclick = NOOP;
+                    button.node.ontouchstart = NOOP;
                     var start = menuWidth;
                     var stop = menuItemWidth + gutter + BORDER;
                     Snap.animate(start, stop, function (value) {
@@ -502,11 +512,13 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.children = [];
                 button.index = index;
                 button.node.onclick = onClick.bind(button);
+                button.node.ontouchstart = onClick.bind(button);
                 button.node.onblur = NOOP;
                 button.node.oncontextmenu = preventDefault;
             });
         }
         function resetMenu() {
+            trigger('before:reset', { menu: paper });
             buttons.forEach(function (button) {
                 if (button.children.length > 0) {
                     button.children.forEach(function (child) {
@@ -516,11 +528,17 @@ Snap.plugin(function (Snap, Element, Paper) {
                 button.children = [];
                 button.isActive = false;
                 button.node.onclick = onClick.bind(button);
+                button.node.ontouchstart = onClick.bind(button);
                 var start = paper.visible ? menuWidth : -menuWidth;
                 var stop = paper.visible ? menuWidth : -menuWidth;
                 Snap.animate(start, stop, function (value) {
                     button.attr(translateX(value));
-                }, 50);
+                }, 50, mina.linear, function () {
+                    if (button.index === buttons.length - 1) {
+                        trigger('reset', { menu: paper });
+                        paper.node.parentElement.focus();
+                    }
+                });
                 button.removeClass('active').removeClass('disabled').attr({ opacity: 1 }).reset().enableHoverAnimation();
             });
         }
@@ -534,6 +552,8 @@ Snap.plugin(function (Snap, Element, Paper) {
                             if (index === items.length - 1) {
                                 paper.visible = true;
                                 trigger('show', { menu: paper });
+                            } else if (index === 0) {
+                                trigger('before:show', { menu: paper });
                             }
                         });
                     }, duration / 2 * index);
@@ -548,6 +568,8 @@ Snap.plugin(function (Snap, Element, Paper) {
                     if (index === items.length - 1) {
                         paper.visible = false;
                         trigger('hide', { menu: paper });
+                    } else if (index === 0) {
+                        trigger('before:hide', { menu: paper });
                     }
                 });
             });
@@ -584,6 +606,9 @@ Snap.plugin(function (Snap, Element, Paper) {
         }
         setupMenu();
         return {
+            isVisible: function () {
+                return paper.visible;
+            },
             buttons: buttons,
             toggle: debounce(toggleMenu, 2.5 * DURATION, true),
             reset: resetMenu,
@@ -608,31 +633,19 @@ var HexagonalView = Marionette.ItemView.extend({
             width: 210
         };
         var items = [
-            {
-                title: 'CHOICE ONE',
-                subtitle: 'test sub-title text'
-            },
-            {
-                title: 'CHOICE TWO',
-                subtitle: 'test sub-title text'
-            },
-            {
-                title: 'CHOICE THREE',
-                subtitle: 'test sub-title text'
-            },
-            {
-                title: 'CHOICE FOUR',
-                subtitle: 'test sub-title text'
-            },
-            {
-                title: 'CHOICE FIVE',
-                subtitle: 'test sub-title text'
-            },
+            { title: 'CHOICE ONE' },
+            { title: 'CHOICE TWO' },
+            { title: 'CHOICE THREE' },
+            { title: 'CHOICE FOUR' },
+            { title: 'CHOICE FIVE' },
             {
                 title: 'CHOICE SIX',
-                subtitle: 'test sub-title text'
+                subtitle: 'this button is special'
             }
         ];
+        items.forEach(function (item) {
+            item.children = JSON.parse(JSON.stringify(items));
+        });
         var menu = paper.hexamenu(items, options);
         var h1 = paper.hexagon(30, 529, 85);
         h1.attr({ fill: '#333' });
@@ -651,13 +664,28 @@ var HexagonalView = Marionette.ItemView.extend({
             e.detail.target.reset();
             e.detail.parent.disableHoverAnimation();
         };
-        menu.on('click:3:4', clickHandler);
+        menu.on('before:show', function () {
+            console.log('before show');
+        });
         menu.on('show', function () {
             console.log('show');
+        });
+        menu.on('before:hide', function () {
+            console.log('before hide');
         });
         menu.on('hide', function () {
             console.log('hide');
         });
+        menu.on('before:reset', function () {
+            console.log(menu.isVisible());
+        });
+        menu.on('reset', function () {
+            console.log('RESET');
+        });
+        menu.on('click:1', function () {
+            console.log('Boot!');
+        });
+        menu.on('click:3:4', clickHandler);
     }
 });
 module.exports = HexagonalView;
@@ -4670,25 +4698,30 @@ module.exports = amdefine;
 }));
 
 },{"backbone":18,"backbone.babysitter":14,"backbone.wreqr":17,"underscore":66}],16:[function(require,module,exports){
-'use strict';
-
-var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj; };
-
-// Backbone.Radio v1.0.3
+// Backbone.Radio v1.0.4
 
 (function (global, factory) {
-  (typeof exports === 'undefined' ? 'undefined' : _typeof(exports)) === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('backbone')) : typeof define === 'function' && define.amd ? define(['underscore', 'backbone'], factory) : (global.Backbone = global.Backbone || {}, global.Backbone.Radio = factory(global._, global.Backbone));
-})(undefined, function (_, Backbone) {
-  'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('backbone')) :
+  typeof define === 'function' && define.amd ? define(['underscore', 'backbone'], factory) :
+  (global.Backbone = global.Backbone || {}, global.Backbone.Radio = factory(global._,global.Backbone));
+}(this, function (_,Backbone) { 'use strict';
 
   _ = 'default' in _ ? _['default'] : _;
   Backbone = 'default' in Backbone ? Backbone['default'] : Backbone;
+
+  var babelHelpers = {};
+  babelHelpers.typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) {
+    return typeof obj;
+  } : function (obj) {
+    return obj && typeof Symbol === "function" && obj.constructor === Symbol ? "symbol" : typeof obj;
+  };
+  babelHelpers;
 
   var previousRadio = Backbone.Radio;
 
   var Radio = Backbone.Radio = {};
 
-  Radio.VERSION = '1.0.3';
+  Radio.VERSION = '1.0.4';
 
   // This allows you to run multiple instances of Radio on the same
   // webapp. After loading the new version, call `noConflict()` to
@@ -4732,7 +4765,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     var results = {};
 
     // Handle event maps.
-    if ((typeof name === 'undefined' ? 'undefined' : _typeof(name)) === 'object') {
+    if ((typeof name === 'undefined' ? 'undefined' : babelHelpers.typeof(name)) === 'object') {
       for (var key in name) {
         var result = obj[action].apply(obj, [key, name[key]].concat(rest));
         eventSplitter.test(key) ? _.extend(results, result) : results[key] = result;
@@ -5012,7 +5045,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
   };
 
   return Radio;
-});
+
+}));
 
 },{"backbone":18,"underscore":66}],17:[function(require,module,exports){
 // Backbone.Wreqr (Backbone.Marionette)
