@@ -85,6 +85,17 @@ module.exports = App;
     var Snap = require('snapsvg');
     Snap.plugin(function (Snap, Element, Paper) {
         var NO_USER_SELECT = { style: '-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;outline:none;' };
+        function now() {
+            return new Date().getTime();
+        }
+        function NOOP() {
+        }
+        function preventDefault(e) {
+            e.preventDefault();
+        }
+        function translateX(value) {
+            return { transform: 'translateX(' + value + ')' };
+        }
         function clone(obj) {
             return JSON.parse(JSON.stringify(obj));
         }
@@ -97,10 +108,45 @@ module.exports = App;
         function isTouch() {
             return !!('ontouchstart' in window) || window.navigator.msMaxTouchPoints > 0;
         }
-        Paper.prototype.hexagon = function (sideLength, x0, y0) {
+        function debounce(func, wait, immediate) {
+            var timeout;
+            var args;
+            var context;
+            var timestamp;
+            var result;
+            var later = function () {
+                var last = now() - timestamp;
+                if (last < wait && last >= 0) {
+                    timeout = setTimeout(later, wait - last);
+                } else {
+                    timeout = null;
+                    if (!immediate) {
+                        result = func.apply(context, args);
+                        if (!timeout) {
+                            context = args = null;
+                        }
+                    }
+                }
+            };
+            return function () {
+                context = this;
+                args = arguments;
+                timestamp = now();
+                var callNow = immediate && !timeout;
+                if (!timeout) {
+                    timeout = setTimeout(later, wait);
+                }
+                if (callNow) {
+                    result = func.apply(context, args);
+                    context = args = null;
+                }
+                return result;
+            };
+        }
+        Paper.prototype.hexagon = function (side, x0, y0) {
             x0 = x0 ? x0 : 0;
             y0 = y0 ? y0 : 0;
-            var SIDE = sideLength;
+            var SIDE = side;
             var PI_OVER_6 = Math.PI / 6;
             var ALPHA = SIDE * Math.sin(PI_OVER_6);
             var BETA = SIDE * Math.cos(PI_OVER_6);
@@ -130,12 +176,12 @@ module.exports = App;
         };
         Paper.prototype.hexabar = function (options) {
             var defaultValues = {
-                cursor: 'pointer',
                 fill: '#222',
                 stroke: '#222',
                 strokeWidth: '1px'
             };
             var hoverValues = {
+                cursor: 'pointer',
                 fill: '#FFF',
                 stroke: '#333'
             };
@@ -223,7 +269,9 @@ module.exports = App;
             button.width = W;
             button.bar = bar;
             var onHoverIn = function () {
-                !button.hasClass('disabled') && button.focus();
+                if (!(button.hasClass('disabled') || button.hasClass('active'))) {
+                    button.focus();
+                }
                 if (!button.hoverAnimationDisabled && subTitle.attr('text').length > 0) {
                     title.animate({
                         fontSize: FONT_SIZE * 0.8,
@@ -241,18 +289,25 @@ module.exports = App;
             button.enableHoverAnimation = function () {
                 button.hoverAnimationDisabled = false;
                 button.hover(onHoverIn, onHoverOut);
+                return button;
             };
             button.disableHoverAnimation = function () {
                 button.hoverAnimationDisabled = true;
                 button.unhover(onHoverIn, onHoverOut);
-                if (button.hasClass('disabled')) {
-                    bar.attr('cursor', 'default');
-                    title.node.style.cursor = 'default';
-                    subTitle.node.style.cursor = 'default';
-                }
+                return button;
+            };
+            button.enable = function () {
+                button.removeClass('active').removeClass('disabled').attr({ opacity: 1 }).enableHoverAnimation().blur();
+            };
+            button.disable = function () {
+                button.bar.node.style.cursor = 'default';
+                button.title.node.style.cursor = 'default';
+                button.subTitle.node.style.cursor = 'default';
+                button.addClass('disabled').attr('opacity', 0.8).disableHoverAnimation();
             };
             button.focus = function () {
-                button.bar.attr(extend(clone(defaultValues), hoverValues));
+                extend(button.bar.node.style, extend(clone(defaultValues), hoverValues));
+                button.bar.node.style.cursor = 'pointer';
                 button.title.node.style.cursor = 'pointer';
                 button.title.node.style.fill = hoverValues.stroke;
                 button.subTitle.node.style.cursor = 'pointer';
@@ -260,24 +315,224 @@ module.exports = App;
                 return button;
             };
             button.blur = function () {
-                button.bar.attr(defaultValues);
+                extend(button.bar.node.style, defaultValues);
                 button.title.node.style.fill = '#FFF';
-                button.title.animate({
-                    fontSize: FONT_SIZE,
-                    y: y0 + cY
-                }, 100);
-                button.subTitle.animate({
-                    opacity: 0,
-                    x: x0 + BETA
-                }, 100);
-                return button;
-            };
-            button.reset = function () {
-                onHoverOut();
+                if (!button.hoverAnimationDisabled && subTitle.attr('text').length > 0) {
+                    button.title.animate({
+                        fontSize: FONT_SIZE,
+                        y: y0 + cY
+                    }, 100);
+                    button.subTitle.animate({
+                        opacity: 0,
+                        x: x0 + BETA
+                    }, 100);
+                }
                 return button;
             };
             button.enableHoverAnimation();
             return button;
+        };
+        Paper.prototype.hexamenu = function (items, options) {
+            var paper = this;
+            paper.visible = false;
+            var buttons = [];
+            var DURATION = options.duration ? options.duration : 100;
+            var BORDER = 1;
+            var SIDE = options.sideLength;
+            var width = options.width;
+            var gutter = 4;
+            var PI_OVER_6 = Math.PI / 6;
+            var SQRT_2 = Math.sqrt(2);
+            var ALPHA = SIDE * Math.sin(PI_OVER_6);
+            var BETA = SIDE * Math.cos(PI_OVER_6);
+            var H = SIDE + ALPHA;
+            var menuItemWidth = width + BETA + 2 * gutter + 2 * BORDER;
+            var menuWidth = menuItemWidth + BETA + 2 * gutter;
+            function rowHeight(m) {
+                return m > 0 ? m * (SIDE + SQRT_2 * gutter) + (m - 1) * ALPHA : -ALPHA;
+            }
+            var onClick = function (e) {
+                e.preventDefault();
+                var thisButton = buttons[this.index];
+                trigger('click:' + thisButton.index, {
+                    menu: paper,
+                    parent: null,
+                    target: thisButton
+                });
+                thisButton.blur();
+                if (thisButton.isActive) {
+                    resetMenu.bind(paper)();
+                } else {
+                    thisButton.isActive = true;
+                    thisButton.addClass('active');
+                    thisButton.children = [];
+                    thisButton.disableHoverAnimation();
+                    var index = thisButton.index;
+                    var x0 = menuWidth - BETA;
+                    var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
+                    items[thisButton.index].children.forEach(function (child, index) {
+                        thisButton.children.push(paper.hexabar({
+                            title: child.title,
+                            subtitle: child.subtitle,
+                            sideLength: SIDE,
+                            width: width,
+                            x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
+                            y: y0 + rowHeight(index + 1)
+                        }).attr('opacity', 0));
+                    });
+                    thisButton.children.forEach(function (child, index) {
+                        child.index = index;
+                        var options = {
+                            menu: paper,
+                            parent: thisButton,
+                            target: child
+                        };
+                        var eventName = 'click:' + thisButton.index + ':';
+                        function triggerEvents() {
+                            trigger('click:child', options);
+                            trigger(eventName + 'child', options);
+                            trigger(eventName + index, options);
+                        }
+                        setTimeout(function () {
+                            child.node.onclick = triggerEvents;
+                            child.node.ontouchstart = triggerEvents;
+                            child.node.oncontextmenu = preventDefault;
+                            child.attr('opacity', 1);
+                            Snap.animate(0, -menuWidth, function (value) {
+                                child.attr(translateX(value));
+                            }, 50, mina.easein);
+                        }, 50 * index);
+                    });
+                    buttons.filter(function (e, i) {
+                        return i !== thisButton.index;
+                    }).forEach(function (button) {
+                        button.node.onclick = NOOP;
+                        button.node.ontouchstart = NOOP;
+                        var start = menuWidth;
+                        var stop = menuItemWidth + gutter + BORDER;
+                        Snap.animate(start, stop, function (value) {
+                            button.attr(translateX(value));
+                        }, 50, mina.linear, function () {
+                            button.disable();
+                        });
+                    });
+                }
+            };
+            function createButtons() {
+                buttons = items.map(function (item, index) {
+                    item.sideLength = SIDE;
+                    item.width = width;
+                    item.x = 0 - menuItemWidth;
+                    item.y = ALPHA + index * (H + gutter + 2 * BORDER);
+                    item.level = 0;
+                    return paper.hexabar(item);
+                });
+                return buttons;
+            }
+            function setupMenu() {
+                createButtons().forEach(function (button, index) {
+                    button.children = [];
+                    button.index = index;
+                    button.node.onclick = onClick.bind(button);
+                    button.node.ontouchstart = onClick.bind(button);
+                    button.node.onblur = NOOP;
+                    button.node.oncontextmenu = preventDefault;
+                });
+            }
+            function resetMenu() {
+                trigger('before:reset', { menu: paper });
+                buttons.forEach(function (button) {
+                    if (button.children.length > 0) {
+                        button.children.forEach(function (child) {
+                            child.remove();
+                        });
+                        button.children = [];
+                    }
+                    button.isActive = false;
+                    button.node.onclick = onClick.bind(button);
+                    button.node.ontouchstart = onClick.bind(button);
+                    var start = paper.visible ? menuWidth : -menuWidth;
+                    var stop = paper.visible ? menuWidth : -menuWidth;
+                    Snap.animate(start, stop, function (value) {
+                        button.attr(translateX(value));
+                    }, 50, mina.linear, function () {
+                        button.enable();
+                        if (button.index === buttons.length - 1) {
+                            trigger('reset', { menu: paper });
+                        }
+                    });
+                });
+            }
+            function showMenu(duration) {
+                if (!paper.visible) {
+                    buttons.forEach(function (button, index) {
+                        setTimeout(function () {
+                            Snap.animate(0, menuWidth, function (value) {
+                                button.attr(translateX(value));
+                            }, duration, mina.easein, function () {
+                                if (index === items.length - 1) {
+                                    paper.visible = true;
+                                    trigger('show', { menu: paper });
+                                } else if (index === 0) {
+                                    trigger('before:show', { menu: paper });
+                                }
+                            });
+                        }, duration / 2 * index);
+                    });
+                }
+            }
+            function hideMenu(duration) {
+                var _duration;
+                buttons.slice(0).reverse().forEach(function (button, index) {
+                    _duration = duration + duration / 2 * index;
+                    Snap.animate(menuWidth, 0, function (value) {
+                        button.attr(translateX(value));
+                    }, _duration, mina.backout, function () {
+                        if (index === items.length - 1) {
+                            paper.visible = false;
+                            trigger('hide', { menu: paper });
+                        } else if (index === 0) {
+                            trigger('before:hide', { menu: paper });
+                        }
+                    });
+                });
+            }
+            function closeMenu(duration) {
+                resetMenu.bind(paper)();
+                hideMenu.bind(paper)(duration);
+            }
+            function toggleMenu() {
+                if (paper.visible) {
+                    closeMenu.bind(paper)(DURATION);
+                } else {
+                    showMenu.bind(paper)(DURATION);
+                }
+            }
+            function trigger(name, options) {
+                var event;
+                if (window.CustomEvent) {
+                    event = new CustomEvent(name, { detail: options });
+                } else {
+                    event = document.createEvent('CustomEvent');
+                    event.initCustomEvent(name, true, true, options);
+                }
+                paper.node.dispatchEvent(event);
+            }
+            setupMenu();
+            return {
+                isVisible: function () {
+                    return paper.visible;
+                },
+                on: function (event, handler) {
+                    paper.node.addEventListener(event, handler);
+                },
+                off: function (event, handler) {
+                    paper.node.removeEventListener(event, handler);
+                },
+                buttons: buttons,
+                toggle: debounce(toggleMenu, 2.5 * DURATION, true),
+                reset: resetMenu
+            };
         };
     });
 }(require));
@@ -322,7 +577,6 @@ module.exports = App;
         });
     } else {
         WebApp.start();
-        console.log('Boot!');
     }
 }(require));
 },{"./app":1,"./router":8,"./views/example":11,"./views/hexagonal":12,"backbone":18}],7:[function(require,module,exports){
@@ -408,261 +662,6 @@ var Marionette = require('backbone.marionette');
 var Snap = require('snapsvg');
 var JST = require('./../templates');
 var Example = require('./../models/example');
-Snap.plugin(function (Snap, Element, Paper) {
-    function now() {
-        return new Date().getTime();
-    }
-    function NOOP() {
-        console.log('NOOP!!!');
-    }
-    function preventDefault(e) {
-        e.preventDefault();
-    }
-    function translateX(value) {
-        return { transform: 'translateX(' + value + ')' };
-    }
-    function debounce(func, wait, immediate) {
-        var timeout;
-        var args;
-        var context;
-        var timestamp;
-        var result;
-        var later = function () {
-            var last = now() - timestamp;
-            if (last < wait && last >= 0) {
-                timeout = setTimeout(later, wait - last);
-            } else {
-                timeout = null;
-                if (!immediate) {
-                    result = func.apply(context, args);
-                    if (!timeout) {
-                        context = args = null;
-                    }
-                }
-            }
-        };
-        return function () {
-            context = this;
-            args = arguments;
-            timestamp = now();
-            var callNow = immediate && !timeout;
-            if (!timeout) {
-                timeout = setTimeout(later, wait);
-            }
-            if (callNow) {
-                result = func.apply(context, args);
-                context = args = null;
-            }
-            return result;
-        };
-    }
-    Paper.prototype.hexamenu = function (items, options) {
-        var paper = this;
-        paper.visible = false;
-        var buttons = [];
-        var DURATION = options.duration ? options.duration : 100;
-        var BORDER = 1;
-        var SIDE = options.sideLength;
-        var width = options.width;
-        var gutter = 4;
-        var PI_OVER_6 = Math.PI / 6;
-        var SQRT_2 = Math.sqrt(2);
-        var ALPHA = SIDE * Math.sin(PI_OVER_6);
-        var BETA = SIDE * Math.cos(PI_OVER_6);
-        var H = SIDE + ALPHA;
-        var menuItemWidth = width + BETA + 2 * gutter + 2 * BORDER;
-        var menuWidth = menuItemWidth + BETA + 2 * gutter;
-        function rowHeight(m) {
-            return m > 0 ? m * (SIDE + SQRT_2 * gutter) + (m - 1) * ALPHA : -ALPHA;
-        }
-        var onClick = function (e) {
-            e.preventDefault();
-            var thisButton = buttons[this.index];
-            trigger('click:' + thisButton.index, {
-                menu: paper,
-                parent: null,
-                target: thisButton
-            });
-            thisButton.reset();
-            if (thisButton.isActive) {
-                resetMenu.bind(paper)();
-            } else {
-                thisButton.isActive = true;
-                thisButton.addClass('active');
-                thisButton.children = [];
-                thisButton.disableHoverAnimation();
-                var index = thisButton.index;
-                var x0 = menuWidth - BETA;
-                var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
-                items[thisButton.index].children.forEach(function (child, index) {
-                    thisButton.children.push(paper.hexabar({
-                        title: child.title,
-                        subtitle: child.subtitle,
-                        sideLength: SIDE,
-                        width: width,
-                        x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
-                        y: y0 + rowHeight(index + 1)
-                    }).attr('opacity', 0));
-                });
-                thisButton.children.forEach(function (child, index) {
-                    child.index = index;
-                    setTimeout(function () {
-                        var options = {
-                            menu: paper,
-                            parent: thisButton,
-                            target: child
-                        };
-                        var eventName = 'click:' + thisButton.index + ':';
-                        child.node.onclick = function () {
-                            trigger('click:child', options);
-                            trigger(eventName + 'child', options);
-                            trigger(eventName + index, options);
-                        };
-                        child.node.ontouchstart = function () {
-                            trigger('click:child', options);
-                            trigger(eventName + 'child', options);
-                            trigger(eventName + index, options);
-                        };
-                        child.node.oncontextmenu = preventDefault;
-                        child.attr('opacity', 1);
-                        Snap.animate(0, -menuWidth, function (value) {
-                            child.attr(translateX(value));
-                        }, 50, mina.easein);
-                    }, 50 * index);
-                });
-                buttons.filter(function (e, i) {
-                    return i !== thisButton.index;
-                }).forEach(function (button) {
-                    button.node.onclick = NOOP;
-                    button.node.ontouchstart = NOOP;
-                    var start = menuWidth;
-                    var stop = menuItemWidth + gutter + BORDER;
-                    Snap.animate(start, stop, function (value) {
-                        button.attr(translateX(value));
-                    }, 50, mina.linear, function () {
-                        button.attr('opacity', 0.8).addClass('disabled').disableHoverAnimation();
-                    });
-                });
-            }
-        };
-        function createButtons() {
-            buttons = items.map(function (item, index) {
-                item.sideLength = SIDE;
-                item.width = width;
-                item.x = 0 - menuItemWidth;
-                item.y = ALPHA + index * (H + gutter + 2 * BORDER);
-                item.level = 0;
-                return paper.hexabar(item);
-            });
-            return buttons;
-        }
-        function setupMenu() {
-            createButtons().forEach(function (button, index) {
-                button.children = [];
-                button.index = index;
-                button.node.onclick = onClick.bind(button);
-                button.node.ontouchstart = onClick.bind(button);
-                button.node.onblur = NOOP;
-                button.node.oncontextmenu = preventDefault;
-            });
-        }
-        function resetMenu() {
-            trigger('before:reset', { menu: paper });
-            buttons.forEach(function (button) {
-                if (button.children.length > 0) {
-                    button.children.forEach(function (child) {
-                        child.remove();
-                    });
-                }
-                button.children = [];
-                button.isActive = false;
-                button.node.onclick = onClick.bind(button);
-                button.node.ontouchstart = onClick.bind(button);
-                var start = paper.visible ? menuWidth : -menuWidth;
-                var stop = paper.visible ? menuWidth : -menuWidth;
-                Snap.animate(start, stop, function (value) {
-                    button.attr(translateX(value));
-                }, 50, mina.linear, function () {
-                    if (button.index === buttons.length - 1) {
-                        trigger('reset', { menu: paper });
-                        paper.node.parentElement.focus();
-                    }
-                });
-                button.removeClass('active').removeClass('disabled').attr({ opacity: 1 }).reset().enableHoverAnimation();
-            });
-        }
-        function showMenu(duration) {
-            if (!paper.visible) {
-                buttons.forEach(function (button, index) {
-                    setTimeout(function () {
-                        Snap.animate(0, menuWidth, function (value) {
-                            button.attr(translateX(value));
-                        }, duration, mina.easein, function () {
-                            if (index === items.length - 1) {
-                                paper.visible = true;
-                                trigger('show', { menu: paper });
-                            } else if (index === 0) {
-                                trigger('before:show', { menu: paper });
-                            }
-                        });
-                    }, duration / 2 * index);
-                });
-            }
-        }
-        function hideMenu(duration) {
-            buttons.slice(0).reverse().forEach(function (button, index) {
-                Snap.animate(menuWidth, 0, function (value) {
-                    button.attr(translateX(value));
-                }, duration + duration / 2 * index, mina.backout, function () {
-                    if (index === items.length - 1) {
-                        paper.visible = false;
-                        trigger('hide', { menu: paper });
-                    } else if (index === 0) {
-                        trigger('before:hide', { menu: paper });
-                    }
-                });
-            });
-        }
-        function closeMenu(duration) {
-            resetMenu.bind(paper)();
-            hideMenu.bind(paper)(duration);
-        }
-        function toggleMenu() {
-            if (paper.visible) {
-                closeMenu.bind(paper)(DURATION);
-            } else {
-                showMenu.bind(paper)(DURATION);
-            }
-        }
-        function trigger(name, options) {
-            var event;
-            if (window.CustomEvent) {
-                event = new CustomEvent(name, { detail: options });
-            } else {
-                event = document.createEvent('CustomEvent');
-                event.initCustomEvent(name, true, true, options);
-            }
-            paper.node.dispatchEvent(event);
-        }
-        function on(event, handler) {
-            paper.node.addEventListener(event, handler);
-        }
-        function off(event, handler) {
-            paper.node.removeEventListener(event, handler);
-        }
-        setupMenu();
-        return {
-            isVisible: function () {
-                return paper.visible;
-            },
-            buttons: buttons,
-            toggle: debounce(toggleMenu, 2.5 * DURATION, true),
-            reset: resetMenu,
-            on: on,
-            off: off
-        };
-    };
-});
 var HexagonalView = Marionette.ItemView.extend({
     template: JST.hexagonal,
     model: new Example.model(),
@@ -703,41 +702,23 @@ var HexagonalView = Marionette.ItemView.extend({
         h2.click(function () {
             menu.reset();
         });
-        menu.on('before:show', function () {
-            console.log('before show');
-        });
-        menu.on('show', function () {
-            console.log('show');
-        });
-        menu.on('before:hide', function () {
-            console.log('before hide');
-        });
-        menu.on('hide', function () {
-            console.log('hide');
-        });
-        menu.on('before:reset', function () {
-            console.log(menu.isVisible());
-        });
-        menu.on('reset', function () {
-            console.log('RESET');
-        });
-        menu.on('click:1', function () {
-            console.log('Boot!');
-        });
         menu.on('click:child', function (e) {
             var colors = [
-                'red',
                 'yellow',
                 'green',
                 'red',
                 'gray',
-                'purple'
+                'purple',
+                '#e6e6e6'
             ];
             var color = colors[e.detail.target.index];
             document.getElementsByTagName('BODY')[0].style.background = color;
         });
-        menu.on('click:2:child', function () {
-            console.log('child clicked');
+        menu.on('click:2:child', function (e) {
+            console.log(e.detail.target.title.attr('text'));
+        });
+        menu.on('click:2:0', function () {
+            console.log('NOW YOU DONE IT');
         });
     }
 });
