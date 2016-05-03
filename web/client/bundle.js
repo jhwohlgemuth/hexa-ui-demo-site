@@ -88,8 +88,6 @@ module.exports = App;
         function now() {
             return new Date().getTime();
         }
-        function NOOP() {
-        }
         function preventDefault(e) {
             e.preventDefault();
         }
@@ -406,8 +404,8 @@ module.exports = App;
                     buttons.filter(function (e, i) {
                         return i !== thisButton.index;
                     }).forEach(function (button) {
-                        button.node.onclick = NOOP;
-                        button.node.ontouchstart = NOOP;
+                        button.node.onclick = preventDefault;
+                        button.node.ontouchstart = preventDefault;
                         var start = menuWidth;
                         var stop = menuItemWidth + gutter + BORDER;
                         Snap.animate(start, stop, function (value) {
@@ -435,7 +433,7 @@ module.exports = App;
                     button.index = index;
                     button.node.onclick = onClick.bind(button);
                     button.node.ontouchstart = onClick.bind(button);
-                    button.node.onblur = NOOP;
+                    button.node.onblur = preventDefault;
                     button.node.oncontextmenu = preventDefault;
                 });
             }
