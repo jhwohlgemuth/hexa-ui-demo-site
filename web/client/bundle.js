@@ -361,76 +361,26 @@ module.exports = App;
                 if (thisButton.isActive) {
                     resetMenu.bind(paper)();
                 } else {
-                    thisButton.isActive = true;
-                    thisButton.addClass('active');
-                    thisButton.children = [];
-                    thisButton.disableHoverAnimation();
-                    var index = thisButton.index;
-                    var x0 = menuWidth - BETA;
-                    var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
-                    items[thisButton.index].children.forEach(function (child, index) {
-                        thisButton.children.push(paper.hexabar({
-                            title: child.title,
-                            subtitle: child.subtitle,
-                            sideLength: SIDE,
-                            width: width,
-                            x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
-                            y: y0 + rowHeight(index + 1)
-                        }).attr('opacity', 0));
-                    });
-                    thisButton.children.forEach(function (child, index) {
-                        child.index = index;
-                        var options = {
-                            menu: paper,
-                            parent: thisButton,
-                            target: child
-                        };
-                        var eventName = 'click:' + thisButton.index + ':';
-                        function triggerEvents() {
-                            trigger('click:child', options);
-                            trigger(eventName + 'child', options);
-                            trigger(eventName + index, options);
-                        }
-                        setTimeout(function () {
-                            child.node.onclick = triggerEvents;
-                            child.node.ontouchstart = triggerEvents;
-                            child.node.oncontextmenu = preventDefault;
-                            child.attr('opacity', 1);
-                            Snap.animate(0, -menuWidth, function (value) {
-                                child.attr(translateX(value));
-                            }, 50, mina.easein);
-                        }, 50 * index);
-                    });
-                    buttons.filter(function (e, i) {
-                        return i !== thisButton.index;
-                    }).forEach(function (button) {
-                        button.node.onclick = preventDefault;
-                        button.node.ontouchstart = preventDefault;
-                        var start = menuWidth;
-                        var stop = menuItemWidth + gutter + BORDER;
-                        Snap.animate(start, stop, function (value) {
-                            button.attr(translateX(value));
-                        }, 50, mina.linear, function () {
-                            button.disable();
-                        });
-                    });
+                    thisButton.hasSubmenu && showSubmenuFor(thisButton);
                 }
             };
             function createButtons() {
-                buttons = items.map(function (item, index) {
-                    item.sideLength = SIDE;
-                    item.width = width;
-                    item.x = 0 - menuItemWidth;
-                    item.y = ALPHA + index * (H + gutter + 2 * BORDER);
-                    item.level = 0;
-                    return paper.hexabar(item);
+                buttons = items.map(function (button, index) {
+                    var hasSubmenu = Array.isArray(items[index].submenu) && items[index].submenu.length > 0;
+                    button.sideLength = SIDE;
+                    button.width = width;
+                    button.x = 0 - menuItemWidth;
+                    button.y = ALPHA + index * (H + gutter + 2 * BORDER);
+                    button.level = hasSubmenu ? 0 : 1;
+                    return paper.hexabar(button);
                 });
                 return buttons;
             }
             function setupMenu() {
                 createButtons().forEach(function (button, index) {
-                    button.children = [];
+                    button.submenu = [];
                     button.index = index;
+                    button.hasSubmenu = Array.isArray(items[index].submenu) && items[index].submenu.length > 0;
                     button.node.onclick = onClick.bind(button);
                     button.node.ontouchstart = onClick.bind(button);
                     button.node.onblur = preventDefault;
@@ -440,11 +390,11 @@ module.exports = App;
             function resetMenu() {
                 trigger('before:reset', { menu: paper });
                 buttons.forEach(function (button) {
-                    if (button.children.length > 0) {
-                        button.children.forEach(function (child) {
-                            child.remove();
+                    if (button.submenu.length > 0) {
+                        button.submenu.forEach(function (item) {
+                            item.remove();
                         });
-                        button.children = [];
+                        button.submenu = [];
                     }
                     button.isActive = false;
                     button.node.onclick = onClick.bind(button);
@@ -478,6 +428,69 @@ module.exports = App;
                         }, duration / 2 * index);
                     });
                 }
+            }
+            function showSubmenuFor(button) {
+                var thisButton = button;
+                thisButton.isActive = true;
+                thisButton.addClass('active');
+                thisButton.submenu = [];
+                thisButton.disableHoverAnimation();
+                var index = thisButton.index;
+                var x0 = menuWidth - BETA;
+                var y0 = ALPHA + index * (H + gutter + 2 * BORDER);
+                function hasSubmenu(item) {
+                    return item.submenu && item.submenu.length > 0;
+                }
+                items[thisButton.index].submenu.forEach(function (item, index) {
+                    thisButton.submenu.push(paper.hexabar({
+                        title: item.title,
+                        subtitle: item.subtitle,
+                        sideLength: SIDE,
+                        width: width,
+                        x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
+                        y: y0 + rowHeight(index + 1)
+                    }).attr('opacity', 0));
+                });
+                thisButton.submenu.forEach(function (item, index) {
+                    item.index = index;
+                    var options = {
+                        menu: paper,
+                        parent: thisButton,
+                        target: item
+                    };
+                    var eventName = 'click:' + thisButton.index + ':';
+                    function triggerEvents() {
+                        trigger('click:child', options);
+                        trigger(eventName + 'child', options);
+                        trigger(eventName + index, options);
+                    }
+                    setTimeout(function () {
+                        item.node.onclick = triggerEvents;
+                        item.node.ontouchstart = triggerEvents;
+                        item.node.oncontextmenu = preventDefault;
+                        item.attr('opacity', 1);
+                        Snap.animate(0, -menuWidth, function (value) {
+                            item.attr(translateX(value));
+                        }, 50, mina.easein, function () {
+                            if (items[index].submenu && index === items[index].submenu.length - 1) {
+                                trigger('show:submenu', options);
+                            }
+                        });
+                    }, 50 * index);
+                });
+                buttons.filter(function (e, i) {
+                    return i !== thisButton.index;
+                }).forEach(function (button) {
+                    button.node.onclick = preventDefault;
+                    button.node.ontouchstart = preventDefault;
+                    var start = menuWidth;
+                    var stop = menuItemWidth + gutter + BORDER;
+                    Snap.animate(start, stop, function (value) {
+                        button.attr(translateX(value));
+                    }, 50, mina.linear, function () {
+                        button.disable();
+                    });
+                });
             }
             function hideMenu(duration) {
                 var _duration;
@@ -686,8 +699,10 @@ var HexagonalView = Marionette.ItemView.extend({
                 subtitle: 'this button is special'
             }
         ];
-        items.forEach(function (item) {
-            item.children = JSON.parse(JSON.stringify(items));
+        items.forEach(function (item, index) {
+            if (index !== 0) {
+                item.submenu = JSON.parse(JSON.stringify(items));
+            }
         });
         var menu = paper.hexamenu(items, options);
         var h1 = paper.hexagon(30, 529, 85);
@@ -711,6 +726,9 @@ var HexagonalView = Marionette.ItemView.extend({
             ];
             var color = colors[e.detail.target.index];
             document.getElementsByTagName('BODY')[0].style.background = color;
+        });
+        menu.on('click:0', function (e) {
+            document.getElementsByTagName('BODY')[0].style.background = '#ffa500';
         });
         menu.on('click:2:child', function (e) {
             console.log(e.detail.target.title.attr('text'));
