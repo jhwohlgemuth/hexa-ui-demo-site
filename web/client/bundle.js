@@ -197,7 +197,7 @@ module.exports = App;
             var cY = H / 2 + FONT_SIZE / 4;
             var X;
             var Y;
-            if (options.level > 0) {
+            if (options.reverse) {
                 X = [
                     0,
                     BETA + w,
@@ -357,7 +357,6 @@ module.exports = App;
                     parent: null,
                     target: thisButton
                 });
-                thisButton.blur();
                 if (thisButton.isActive) {
                     resetMenu.bind(paper)();
                 } else {
@@ -371,7 +370,7 @@ module.exports = App;
                     button.width = width;
                     button.x = 0 - menuItemWidth;
                     button.y = ALPHA + index * (H + gutter + 2 * BORDER);
-                    button.level = hasSubmenu ? 0 : 1;
+                    button.level = hasSubmenu ? 0 : 0;
                     return paper.hexabar(button);
                 });
                 return buttons;
@@ -383,6 +382,8 @@ module.exports = App;
                     button.hasSubmenu = Array.isArray(items[index].submenu) && items[index].submenu.length > 0;
                     button.node.onclick = onClick.bind(button);
                     button.node.ontouchstart = onClick.bind(button);
+                    button.node.onmousedown = button.focus;
+                    button.node.onmouseup = button.blur;
                     button.node.onblur = preventDefault;
                     button.node.oncontextmenu = preventDefault;
                 });
@@ -448,7 +449,8 @@ module.exports = App;
                         sideLength: SIDE,
                         width: width,
                         x: x0 + 0 * BORDER + 0 * BETA - 2 * gutter + menuWidth,
-                        y: y0 + rowHeight(index + 1)
+                        y: y0 + rowHeight(index + 1),
+                        level: 0
                     }).attr('opacity', 0));
                 });
                 thisButton.submenu.forEach(function (item, index) {
@@ -483,6 +485,8 @@ module.exports = App;
                 }).forEach(function (button) {
                     button.node.onclick = preventDefault;
                     button.node.ontouchstart = preventDefault;
+                    button.node.onmousedown = preventDefault;
+                    button.node.onmouseup = preventDefault;
                     var start = menuWidth;
                     var stop = menuItemWidth + gutter + BORDER;
                     Snap.animate(start, stop, function (value) {
