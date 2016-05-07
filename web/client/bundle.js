@@ -360,7 +360,10 @@ module.exports = App;
                 if (thisButton.isActive) {
                     resetMenu.bind(paper)();
                 } else {
-                    thisButton.hasSubmenu && showSubmenuFor(thisButton);
+                    if (thisButton.hasSubmenu) {
+                        thisButton.blur();
+                        showSubmenuFor(thisButton);
+                    }
                 }
             };
             function createButtons() {
